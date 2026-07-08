@@ -16,7 +16,9 @@
       --muted: #9b94aa;
       --pink: #ff2e63;
       --cyan: #08d9d6;
+      --gold: #ffc857;
       --green: #4ade80;
+      --red: #fb7185;
       --shadow: 0 18px 55px rgba(0,0,0,.35);
     }
 
@@ -29,6 +31,8 @@
     .header { display:flex; justify-content:space-between; align-items:flex-end; gap:16px; flex-wrap:wrap; padding-bottom:20px; border-bottom:1px solid var(--border); margin-bottom:20px; }
     .title { margin:0; font-family:'Archivo Black','Arial Black',sans-serif; font-size:clamp(30px,5vw,52px); line-height:.95; letter-spacing:-1px; background:linear-gradient(90deg,var(--pink),var(--cyan)); -webkit-background-clip:text; background-clip:text; color:transparent; }
     .subtitle { margin-top:8px; color:var(--muted); font-family:'Space Mono',monospace; font-size:13px; }
+    .userbar { display:flex; align-items:center; gap:8px; color:var(--muted); font-family:'Space Mono',monospace; font-size:12px; }
+    .userbar strong { color:var(--text); font-family:Inter,sans-serif; font-size:14px; }
 
     .pill, .btn, .small-btn { border:1px solid var(--border); background:var(--card); color:var(--text); border-radius:999px; cursor:pointer; transition:.15s ease; }
     .pill { padding:9px 14px; font-weight:700; font-size:13px; }
@@ -36,8 +40,11 @@
     .pill.active { background:linear-gradient(90deg,var(--pink),#9f5cff); color:#fff; border-color:transparent; }
     .btn { padding:10px 14px; border-radius:10px; font-weight:800; }
     .btn.primary { background:var(--pink); color:#12070d; border-color:transparent; }
-    .small-btn { padding:6px 9px; border-radius:8px; font-size:12px; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; }
+    .btn.cyan { background:var(--cyan); color:#031213; border-color:transparent; }
+    .btn.danger { background:#351923; color:#fecdd3; border-color:#7f1d1d; }
+    .small-btn { padding:6px 9px; border-radius:8px; font-size:12px; font-weight:700; }
     .small-btn.active { background:var(--cyan); color:#031213; border-color:transparent; }
+    .small-btn.my { background:#27172a; border-color:#6b2949; color:#ffd1e0; }
 
     .tabs { display:flex; gap:10px; flex-wrap:wrap; margin:0 0 18px; }
     .panel { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:16px; box-shadow:var(--shadow); margin-bottom:16px; }
@@ -61,13 +68,20 @@
     .toolbar { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
 
     .list { display:grid; gap:10px; }
-    .card { background:linear-gradient(180deg,#181321,#120f18); border:1px solid var(--border); border-radius:14px; padding:13px; }
+    .card { background:linear-gradient(180deg,#181321,#120f18); border:1px solid var(--border); border-radius:14px; padding:13px; display:grid; grid-template-columns: minmax(0,1fr) auto; gap:12px; align-items:center; }
     .card:hover { border-color:#40364f; background:var(--card2); }
     .name { font-weight:800; font-size:16px; line-height:1.25; }
     .meta { color:var(--muted); font-size:12px; margin-top:6px; display:flex; flex-wrap:wrap; gap:7px; }
     .tag { display:inline-flex; align-items:center; gap:4px; border:1px solid var(--border); border-radius:999px; padding:3px 7px; background:#0f0c16; color:#d6d1e2; }
     .tag.op { color:#fed7e2; border-color:#6b2949; }
     .tag.ed { color:#bfdbfe; border-color:#1e3a8a; }
+    .tag.ok { color:#bbf7d0; border-color:#166534; }
+    .right { display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
+    .avg { min-width:80px; text-align:right; }
+    .avg b { color:var(--gold); font-size:20px; }
+    .avg span { display:block; color:var(--muted); font-size:11px; }
+    .ratings { display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end; max-width:330px; }
+    @media(max-width:760px){ .card{grid-template-columns:1fr;} .right{justify-content:flex-start;} .avg{text-align:left;} .ratings{justify-content:flex-start;} }
 
     .years { display:grid; grid-template-columns: 190px 1fr; gap:14px; }
     .year-list { max-height:650px; overflow:auto; display:grid; gap:6px; align-content:start; }
@@ -79,6 +93,12 @@
     .season-status { font-size:12px; color:var(--muted); line-height:1.4; }
     @media(max-width:760px){ .years{grid-template-columns:1fr;} .year-list{grid-template-columns:repeat(3,1fr); max-height:unset;} .season-grid{grid-template-columns:1fr;} }
 
+    .modal { position:fixed; inset:0; background:rgba(0,0,0,.78); display:flex; align-items:center; justify-content:center; padding:18px; z-index:99; }
+    .modal-card { max-width:480px; width:100%; background:var(--card); border:1px solid var(--border); border-radius:20px; padding:22px; box-shadow:0 30px 80px rgba(0,0,0,.6); }
+    .modal-card h2 { margin:0 0 10px; }
+    .modal-card p { color:var(--muted); line-height:1.5; }
+    .modal-actions { display:flex; gap:10px; margin-top:12px; }
+
     .footer-note { color:var(--muted); font-size:12px; line-height:1.5; margin-top:14px; }
     .import-link { color:var(--cyan); text-decoration:none; border-bottom:1px dashed var(--cyan); }
   </style>
@@ -88,12 +108,18 @@
     <header class="header">
       <div>
         <h1 class="title">OP/ED ORDEN</h1>
-        <div class="subtitle">каталог опенингов и эндингов · без оценок</div>
+        <div class="subtitle">общий рейтинг опенингов и эндингов · оценки 0–10 с шагом 0.5</div>
+      </div>
+      <div class="userbar">
+        <span>ВЫ:</span>
+        <strong id="currentNickname">—</strong>
+        <button class="small-btn" id="changeNickBtn" type="button">сменить ник</button>
       </div>
     </header>
 
     <nav class="tabs">
-      <button class="pill active" data-tab="chart" type="button">Общий список</button>
+      <button class="pill active" data-tab="chart" type="button">Общий чарт</button>
+      <button class="pill" data-tab="profile" type="button">Профиль</button>
       <button class="pill" data-tab="seasons" type="button">Сезоны опенингов</button>
       <button class="pill" id="toggleAddBtn" type="button">+ добавить трек</button>
     </nav>
@@ -128,11 +154,29 @@
         <div><label>Тип</label><select id="typeFilter"><option value="all">Все</option><option value="OP">Только OP</option><option value="ED">Только ED</option></select></div>
         <div><label>Год</label><select id="yearFilter"><option value="all">Все</option></select></div>
         <div><label>Сезон</label><select id="seasonFilter"><option value="all">Все</option><option>Зима</option><option>Весна</option><option>Лето</option><option>Осень</option></select></div>
-        <div><label>Сортировка</label><select id="sortSelect"><option value="yearDesc">Год: новые → старые</option><option value="seasonDesc">Сезоны: новые → старые</option><option value="yearAsc">Год: старые → новые</option><option value="titleAsc">Название А-Я</option></select></div>
+        <div><label>Сортировка</label><select id="sortSelect"><option value="ratingDesc">Рейтинг: лучшие</option><option value="ratingAsc">Рейтинг: худшие</option><option value="yearDesc">Год: новые → старые</option><option value="yearAsc">Год: старые → новые</option><option value="titleAsc">Название А-Я</option></select></div>
         <div><label>Лимит</label><select id="limitSelect"><option value="100">100</option><option value="300">300</option><option value="1000">1000</option><option value="all">Все</option></select></div>
       </div>
       <div id="chartStatus" class="status" style="margin-top:12px;">Загрузка списка…</div>
       <div id="chartList" class="list" style="margin-top:12px;"></div>
+    </section>
+
+    <section class="panel hidden" id="tab-profile">
+      <div class="toolbar">
+        <h2 class="section-title">Профиль</h2>
+        <div class="status" id="profileSummary">—</div>
+      </div>
+      <div class="grid filters">
+        <div><label>Тип</label><select id="profileType"><option value="all">Все типы</option><option value="OP">Только OP</option><option value="ED">Только ED</option></select></div>
+        <div><label>Оценка</label><select id="profileScore"><option value="all">Любая</option><option value="10">10</option><option value="9">9+</option><option value="8">8+</option><option value="7">7+</option><option value="6">6+</option></select></div>
+        <div><label>Сортировка</label><select id="profileSort"><option value="scoreDesc">Моя оценка ↓</option><option value="scoreAsc">Моя оценка ↑</option><option value="yearDesc">Год ↓</option><option value="titleAsc">Название</option></select></div>
+      </div>
+      <h3 class="section-title" style="margin-top:18px;">Все мои оценки</h3>
+      <div id="profileList" class="list"></div>
+      <h3 class="section-title" style="margin-top:18px;">Топ-100 · OP</h3>
+      <div id="profileTopOP" class="list"></div>
+      <h3 class="section-title" style="margin-top:18px;">Топ-100 · ED</h3>
+      <div id="profileTopED" class="list"></div>
     </section>
 
     <section class="panel hidden" id="tab-seasons">
@@ -155,6 +199,17 @@
     <div class="footer-note">
       Админ-импорт стартовых данных: <a class="import-link" href="./firebase-import.html">firebase-import.html</a>.
       После импорта этот файл лучше удалить из репозитория или оставить только на время обслуживания.
+    </div>
+  </div>
+
+  <div class="modal hidden" id="nickModal">
+    <div class="modal-card">
+      <h2>Выбери никнейм</h2>
+      <p>Он нужен, чтобы сайт понимал, какие опенинги уже оценены именно тобой, и мог скрывать их в сезонной оценке.</p>
+      <input id="nickInput" placeholder="Например: Пёс кошачий" maxlength="80" />
+      <div class="modal-actions">
+        <button class="btn primary" id="saveNickBtn" type="button">Войти</button>
+      </div>
     </div>
   </div>
 
