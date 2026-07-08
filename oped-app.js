@@ -3,24 +3,22 @@ import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/1
 import {
   getFirestore,
   collection,
-  doc,
-  setDoc,
   addDoc,
   onSnapshot,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js";
 
 const SEASONS = ["Зима", "Весна", "Лето", "Осень"];
-const STORAGE_NICK = "oped_nickname";
 
 let db = null;
-let auth = null;
 let openings = [];
-let ratings = [];
 let selectedTab = "chart";
 let selectedYear = null;
 let selectedSeason = null;
 let firebaseReady = false;
+let renderQueued = false;
+let yearsCacheKey = "";
+let yearsCacheHtml = "";
 
 const $ = (id) => document.getElementById(id);
 
@@ -38,48 +36,6 @@ function listFrom(value) {
   return String(value || "").split(",").map(x => x.trim()).filter(Boolean);
 }
 
-function normalizeNickname(nickname) {
-  return String(nickname || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-zа-яё0-9_-]+/gi, "_")
-    .slice(0, 60);
-}
-
-function getNickname() {
-  return localStorage.getItem(STORAGE_NICK) || "";
-}
-
-function setNickname(nickname) {
-  const cleaned = String(nickname || "").trim();
-  if (!cleaned) return false;
-  localStorage.setItem(STORAGE_NICK, cleaned);
-  $("currentNickname").textContent = cleaned;
-  return true;
-}
-
-function requireNickname() {
-  const nick = getNickname();
-  if (!nick) {
-    $("nickModal").classList.remove("hidden");
-  } else {
-    $("currentNickname").textContent = nick;
-  }
-}
-
-function avgFor(openingId) {
-  const list = ratings.filter(r => r.openingId === openingId);
-  if (!list.length) return { average: null, count: 0 };
-  const sum = list.reduce((acc, r) => acc + Number(r.score || 0), 0);
-  return { average: sum / list.length, count: list.length };
-}
-
-function myRatingFor(openingId) {
-  const nick = normalizeNickname(getNickname());
-  if (!nick) return null;
-  return ratings.find(r => r.openingId === openingId && normalizeNickname(r.nickname) === nick) || null;
-}
-
 function titleOf(o) {
   return o.title || o.anime || "Без названия";
 }
@@ -95,26 +51,11 @@ function openingSearchText(o) {
   ].join(" ").toLowerCase();
 }
 
-function ratingButtons(opening) {
-  const my = myRatingFor(opening.id);
-  const buttons = [];
-  for (let score = 0; score <= 10; score += 0.5) {
-    const label = Number.isInteger(score) ? String(score) : String(score).replace(".", ",");
-    const active = my && Number(my.score) === score;
-    buttons.push(`<button class="small-btn ${active ? "my" : ""}" data-rate="${score}" data-id="${esc(opening.id)}" type="button">${label}</button>`);
-  }
-  return `<div class="ratings">${buttons.join("")}</div>`;
-}
-
-function openingCard(opening, options = {}) {
-  const { compact = false, showMyScore = false } = options;
-  const avg = avgFor(opening.id);
-  const my = myRatingFor(opening.id);
+function openingCard(opening) {
   const studios = listFrom(opening.studios).join(", ");
   const directors = listFrom(opening.directors).join(", ");
   const performers = listFrom(opening.performers).join(", ");
   const link = opening.link ? `<a class="small-btn" href="${esc(opening.link)}" target="_blank" rel="noopener">видео</a>` : "";
-  const myTag = my ? `<span class="tag ok">моя: ${Number(my.score).toFixed(1).replace(".0", "")}</span>` : `<span class="tag">не оценено</span>`;
 
   return `
     <article class="card">
@@ -123,19 +64,11 @@ function openingCard(opening, options = {}) {
         <div class="meta">
           <span class="tag ${(opening.type || "").toLowerCase()}">${esc(opening.type || "?")}</span>
           <span class="tag">${esc(yearSeasonOf(opening))}</span>
-          ${myTag}
           ${studios ? `<span class="tag">студия: ${esc(studios)}</span>` : ""}
           ${directors ? `<span class="tag">реж.: ${esc(directors)}</span>` : ""}
           ${performers ? `<span class="tag">исп.: ${esc(performers)}</span>` : ""}
           ${link}
         </div>
-      </div>
-      <div class="right">
-        <div class="avg">
-          <b>${avg.average == null ? "—" : avg.average.toFixed(2)}</b>
-          <span>${avg.count} оценок</span>
-        </div>
-        ${showMyScore ? "" : ratingButtons(opening)}
       </div>
     </article>
   `;
@@ -144,21 +77,21 @@ function openingCard(opening, options = {}) {
 function sortOpenings(items, sortValue) {
   const copy = [...items];
   const byTitle = (a, b) => titleOf(a).localeCompare(titleOf(b), "ru");
-  const byYearDesc = (a, b) => (Number(b.year || 0) - Number(a.year || 0)) || ((b.order || 0) - (a.order || 0));
-  const byYearAsc = (a, b) => (Number(a.year || 0) - Number(b.year || 0)) || ((a.order || 0) - (b.order || 0));
-  const byRatingDesc = (a, b) => {
-    const aa = avgFor(a.id); const bb = avgFor(b.id);
-    return ((bb.average ?? -1) - (aa.average ?? -1)) || (bb.count - aa.count) || byTitle(a, b);
+  const byYearDesc = (a, b) => (Number(b.year || 0) - Number(a.year || 0)) || ((Number(b.order || 0)) - Number(a.order || 0)) || byTitle(a, b);
+  const byYearAsc = (a, b) => (Number(a.year || 0) - Number(b.year || 0)) || (Number(a.order || 0) - Number(b.order || 0)) || byTitle(a, b);
+  const bySeasonOrder = (a, b) => {
+    const ay = Number(a.year || 0);
+    const by = Number(b.year || 0);
+    if (ay !== by) return by - ay;
+    const as = SEASONS.indexOf(a.season);
+    const bs = SEASONS.indexOf(b.season);
+    if (as !== bs) return bs - as;
+    return (Number(a.order || 0) - Number(b.order || 0)) || byTitle(a, b);
   };
-  const byRatingAsc = (a, b) => {
-    const aa = avgFor(a.id); const bb = avgFor(b.id);
-    return ((aa.average ?? 999) - (bb.average ?? 999)) || (bb.count - aa.count) || byTitle(a, b);
-  };
-  if (sortValue === "yearDesc") return copy.sort(byYearDesc);
   if (sortValue === "yearAsc") return copy.sort(byYearAsc);
   if (sortValue === "titleAsc") return copy.sort(byTitle);
-  if (sortValue === "ratingAsc") return copy.sort(byRatingAsc);
-  return copy.sort(byRatingDesc);
+  if (sortValue === "seasonDesc") return copy.sort(bySeasonOrder);
+  return copy.sort(byYearDesc);
 }
 
 function filteredChartOpenings() {
@@ -166,6 +99,7 @@ function filteredChartOpenings() {
   const type = $("typeFilter").value;
   const year = $("yearFilter").value;
   const season = $("seasonFilter").value;
+
   let items = openings.filter(o => {
     if (type !== "all" && o.type !== type) return false;
     if (year !== "all" && String(o.year) !== year) return false;
@@ -173,26 +107,35 @@ function filteredChartOpenings() {
     if (search && !openingSearchText(o).includes(search)) return false;
     return true;
   });
+
   items = sortOpenings(items, $("sortSelect").value);
   const limit = $("limitSelect").value;
   if (limit !== "all") items = items.slice(0, Number(limit));
   return items;
 }
 
+function renderYearOptions() {
+  const years = [...new Set(openings.map(o => Number(o.year)).filter(Boolean))].sort((a, b) => b - a);
+  const key = years.join("|");
+  const selected = $("yearFilter").value;
+
+  if (key !== yearsCacheKey) {
+    yearsCacheKey = key;
+    yearsCacheHtml = `<option value="all">Все</option>` + years.map(y => `<option value="${y}">${y}</option>`).join("");
+    $("yearFilter").innerHTML = yearsCacheHtml;
+  }
+
+  if ([...$("yearFilter").options].some(o => o.value === selected)) $("yearFilter").value = selected;
+}
+
 function renderChart() {
+  renderYearOptions();
   const list = filteredChartOpenings();
   $("chartStatus").textContent = firebaseReady
-    ? `Показано: ${list.length}. Всего в базе: ${openings.length}. Оценок: ${ratings.length}.`
+    ? `Показано: ${list.length}. Всего в базе: ${openings.length}.`
     : "Firebase не подключён. Проверь firebase-config.js.";
   $("chartStatus").className = firebaseReady ? "status good" : "status bad";
   $("chartList").innerHTML = list.map(o => openingCard(o)).join("") || `<div class="status">Ничего не найдено.</div>`;
-}
-
-function renderYearOptions() {
-  const years = [...new Set(openings.map(o => Number(o.year)).filter(Boolean))].sort((a, b) => b - a);
-  const selected = $("yearFilter").value;
-  $("yearFilter").innerHTML = `<option value="all">Все</option>` + years.map(y => `<option value="${y}">${y}</option>`).join("");
-  if ([...$("yearFilter").options].some(o => o.value === selected)) $("yearFilter").value = selected;
 }
 
 function getMaxSeasonYear() {
@@ -212,9 +155,7 @@ function renderYears() {
 
 function seasonState(year, season) {
   const items = openings.filter(o => Number(o.year) === Number(year) && o.season === season);
-  const rated = items.filter(o => myRatingFor(o.id)).length;
-  const done = items.length > 0 && rated === items.length;
-  return { items, rated, done };
+  return { items };
 }
 
 function isFutureSeason(year, season) {
@@ -230,14 +171,14 @@ function renderSeasonCards() {
   $("seasonCards").innerHTML = SEASONS.map(season => {
     const st = seasonState(selectedYear, season);
     const future = isFutureSeason(selectedYear, season) && st.items.length === 0;
-    const active = selectedYear === selectedYear && selectedSeason === season;
-    const text = future ? "Скоро будет" : `${st.rated}/${st.items.length} оценено`;
-    const mark = st.done ? "✅" : (future ? "⏳" : "");
+    const active = selectedSeason === season;
+    const text = future ? "Скоро будет" : `${st.items.length} треков`;
+    const mark = future ? "⏳" : "";
     return `
       <div class="season-card">
         <div class="season-head"><span>${esc(season)}</span><span>${mark}</span></div>
         <div class="season-status">${esc(text)}</div>
-        <button class="small-btn ${active ? "active" : ""}" data-season="${esc(season)}" type="button" style="margin-top:10px;">Оценить сезон</button>
+        <button class="small-btn ${active ? "active" : ""}" data-season="${esc(season)}" type="button" style="margin-top:10px;">Открыть сезон</button>
       </div>
     `;
   }).join("");
@@ -249,8 +190,9 @@ function renderSeasonList() {
     $("seasonList").innerHTML = "";
     return;
   }
+
   const st = seasonState(selectedYear, selectedSeason);
-  $("seasonStatus").textContent = `${selectedYear} · ${selectedSeason}: ${st.rated}/${st.items.length} оценено${st.done ? " ✅" : ""}`;
+  $("seasonStatus").textContent = `${selectedYear} · ${selectedSeason}: ${st.items.length} треков`;
   const sorted = [...st.items].sort((a, b) => (Number(a.order || 0) - Number(b.order || 0)) || titleOf(a).localeCompare(titleOf(b), "ru"));
   $("seasonList").innerHTML = sorted.map(o => openingCard(o)).join("") || `<div class="status">В этом сезоне пока нет опенингов.</div>`;
 }
@@ -260,72 +202,23 @@ function renderSeasons() {
   renderSeasonList();
 }
 
-function myRatedOpenings() {
-  const nick = normalizeNickname(getNickname());
-  const myRatings = ratings.filter(r => normalizeNickname(r.nickname) === nick);
-  const byId = Object.fromEntries(openings.map(o => [o.id, o]));
-  return myRatings
-    .map(r => ({ rating: r, opening: byId[r.openingId] }))
-    .filter(x => x.opening);
+function renderActive() {
+  if (selectedTab === "seasons") renderSeasons();
+  else renderChart();
 }
 
-function renderProfile() {
-  let items = myRatedOpenings();
-  const type = $("profileType").value;
-  const minScoreRaw = $("profileScore").value;
-  const sort = $("profileSort").value;
-  if (type !== "all") items = items.filter(x => x.opening.type === type);
-  if (minScoreRaw !== "all") {
-    const minScore = Number(minScoreRaw);
-    items = items.filter(x => Number(x.rating.score) >= minScore);
-  }
-  items.sort((a, b) => {
-    if (sort === "scoreAsc") return Number(a.rating.score) - Number(b.rating.score) || titleOf(a.opening).localeCompare(titleOf(b.opening), "ru");
-    if (sort === "yearDesc") return Number(b.opening.year || 0) - Number(a.opening.year || 0) || titleOf(a.opening).localeCompare(titleOf(b.opening), "ru");
-    if (sort === "titleAsc") return titleOf(a.opening).localeCompare(titleOf(b.opening), "ru");
-    return Number(b.rating.score) - Number(a.rating.score) || titleOf(a.opening).localeCompare(titleOf(b.opening), "ru");
+function scheduleRenderActive() {
+  if (renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(() => {
+    renderQueued = false;
+    renderActive();
   });
-  $("profileSummary").textContent = `Оценено тобой: ${myRatedOpenings().length}`;
-  $("profileList").innerHTML = items.map(x => openingCard(x.opening, { showMyScore: false })).join("") || `<div class="status">Пока нет оценок.</div>`;
-
-  const top = (type) => sortOpenings(openings.filter(o => o.type === type), "ratingDesc")
-    .filter(o => avgFor(o.id).count > 0)
-    .slice(0, 100)
-    .map(o => openingCard(o, { compact: true }));
-  $("profileTopOP").innerHTML = top("OP").join("") || `<div class="status">Пока нет оценок OP.</div>`;
-  $("profileTopED").innerHTML = top("ED").join("") || `<div class="status">Пока нет оценок ED.</div>`;
-}
-
-function renderAll() {
-  renderYearOptions();
-  renderChart();
-  renderProfile();
-  renderSeasons();
-}
-
-async function saveRating(openingId, score) {
-  const nickname = getNickname();
-  if (!nickname) {
-    $("nickModal").classList.remove("hidden");
-    return;
-  }
-  const safeNickname = normalizeNickname(nickname);
-  const ratingId = `${safeNickname}__${openingId}`;
-  await setDoc(doc(db, "ratings", ratingId), {
-    openingId,
-    nickname,
-    score: Number(score),
-    updatedAt: serverTimestamp()
-  }, { merge: true });
 }
 
 async function addOpeningFromForm(event) {
   event.preventDefault();
-  const nickname = getNickname();
-  if (!nickname) {
-    $("nickModal").classList.remove("hidden");
-    return;
-  }
+
   const anime = $("addAnime").value.trim();
   const year = Number($("addYear").value);
   if (!anime || !year) return;
@@ -342,7 +235,7 @@ async function addOpeningFromForm(event) {
     performers: listFrom($("addPerformers").value),
     image: "",
     link: $("addLink").value.trim(),
-    createdBy: nickname,
+    createdBy: "site",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   });
@@ -356,8 +249,8 @@ function bindEvents() {
     btn.addEventListener("click", () => {
       selectedTab = btn.dataset.tab;
       document.querySelectorAll(".pill[data-tab]").forEach(b => b.classList.toggle("active", b === btn));
-      ["chart", "profile", "seasons"].forEach(tab => $("tab-" + tab).classList.toggle("hidden", tab !== selectedTab));
-      renderAll();
+      ["chart", "seasons"].forEach(tab => $("tab-" + tab).classList.toggle("hidden", tab !== selectedTab));
+      renderActive();
     });
   });
 
@@ -370,23 +263,12 @@ function bindEvents() {
     $("typeFilter").value = "all";
     $("yearFilter").value = "all";
     $("seasonFilter").value = "all";
-    $("sortSelect").value = "ratingDesc";
+    $("sortSelect").value = "yearDesc";
     $("limitSelect").value = "100";
     renderChart();
   });
 
-  ["profileType", "profileScore", "profileSort"].forEach(id => $(id).addEventListener("input", renderProfile));
-
-  document.body.addEventListener("click", async (event) => {
-    const rateBtn = event.target.closest("button[data-rate]");
-    if (rateBtn) {
-      rateBtn.disabled = true;
-      try { await saveRating(rateBtn.dataset.id, Number(rateBtn.dataset.rate)); }
-      catch (e) { alert("Не удалось сохранить оценку: " + e.message); }
-      finally { rateBtn.disabled = false; }
-      return;
-    }
-
+  document.body.addEventListener("click", (event) => {
     const yearBtn = event.target.closest("button[data-year]");
     if (yearBtn) {
       selectedYear = Number(yearBtn.dataset.year);
@@ -401,59 +283,33 @@ function bindEvents() {
       renderSeasons();
     }
   });
-
-  $("changeNickBtn").addEventListener("click", () => {
-    $("nickInput").value = getNickname();
-    $("nickModal").classList.remove("hidden");
-  });
-
-  $("saveNickBtn").addEventListener("click", () => {
-    if (setNickname($("nickInput").value)) {
-      $("nickModal").classList.add("hidden");
-      renderAll();
-    } else {
-      alert("Никнейм обязателен");
-    }
-  });
-
-  $("nickInput").addEventListener("keydown", (event) => {
-    if (event.key === "Enter") $("saveNickBtn").click();
-  });
 }
 
 async function initFirebase() {
   const config = window.FIREBASE_CONFIG || {};
   if (!config.projectId || String(config.projectId).includes("ВСТАВЬ")) {
     firebaseReady = false;
-    renderAll();
+    renderActive();
     return;
   }
+
   const app = initializeApp(config);
-  auth = getAuth(app);
+  const auth = getAuth(app);
   db = getFirestore(app);
   await signInAnonymously(auth);
   firebaseReady = true;
 
   onSnapshot(collection(db, "openings"), snapshot => {
     openings = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-    renderAll();
+    scheduleRenderActive();
   }, error => {
     $("chartStatus").className = "status bad";
     $("chartStatus").textContent = "Ошибка чтения openings: " + error.message;
   });
-
-  onSnapshot(collection(db, "ratings"), snapshot => {
-    ratings = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-    renderAll();
-  }, error => {
-    $("chartStatus").className = "status bad";
-    $("chartStatus").textContent = "Ошибка чтения ratings: " + error.message;
-  });
 }
 
 bindEvents();
-requireNickname();
-renderAll();
+renderActive();
 initFirebase().catch(error => {
   firebaseReady = false;
   $("chartStatus").className = "status bad";

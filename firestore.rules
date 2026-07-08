@@ -38,17 +38,6 @@ service cloud.firestore {
       && validStringOrEmpty(data.createdBy, 80);
     }
 
-    function validRating(data) {
-      return data.keys().hasOnly([
-        "openingId", "nickname", "score", "updatedAt"
-      ])
-      && validStringOrEmpty(data.openingId, 120)
-      && validStringOrEmpty(data.nickname, 80)
-      && data.score is number
-      && data.score >= 0
-      && data.score <= 10;
-    }
-
     match /openings/{openingId} {
       allow read: if true;
       allow create: if signedIn() && validOpening(request.resource.data);
@@ -56,16 +45,15 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    match /ratings/{ratingId} {
-      allow read: if true;
-      allow create, update: if signedIn() && validRating(request.resource.data);
-      allow delete: if false;
-    }
-
     match /meta/{metaId} {
       allow read: if true;
       allow create, update: if signedIn();
       allow delete: if false;
+    }
+
+    // Версия без оценок: сайт не читает и не пишет ratings.
+    match /ratings/{ratingId} {
+      allow read, write: if false;
     }
   }
 }

@@ -1,13 +1,4 @@
-// Auto-generated from "Оценки сезонов.xlsx".
-// Версия БЕЗ оценок: здесь только стартовые данные об OP/ED.
-// Openings: 2094
-// Ratings: 0
-//
-// Использование:
-// 1) Подключить файл на странице импорта перед firebase_import_helper.js.
-// 2) Данные будут доступны как window.INITIAL_OPENINGS.
-
-window.INITIAL_OPENINGS = [
+[
   {
     "tempId": "2018_zima_001",
     "title": "Мартовский лев 2 - Опенинг 2",
@@ -33992,4 +33983,4 @@ window.INITIAL_OPENINGS = [
     "link": "",
     "image": ""
   }
-];
+]

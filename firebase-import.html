@@ -23,11 +23,11 @@
     <p>Эта страница один раз заливает стартовые данные из <code>op_ed_initial_data.js</code> в Firestore.</p>
     <ul>
       <li>Опенинги создаются в коллекции <code>openings</code>.</li>
-      <li>Оценки создаются в коллекции <code>ratings</code>.</li>
+      <li>Оценки НЕ импортируются.</li>
       <li>Повторный импорт не создаёт дубли стартовых опенингов, потому что id берётся из <code>tempId</code>.</li>
     </ul>
     <p class="warn">Перед нажатием проверь: Firebase config заполнен, Firestore создан, Anonymous Auth включён, Rules опубликованы.</p>
-    <button id="startBtn" type="button">Начать импорт</button>
+    <button id="startBtn" type="button">Начать импорт опенингов</button>
     <p><a href="./index.html">Вернуться на сайт</a></p>
     <pre id="log">Жду запуска…</pre>
   </main>
@@ -38,7 +38,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js";
     import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js";
     import { getFirestore } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js";
-    import { importInitialOpeningsAndRatings } from "./firebase_import_helper.js";
+    import { importInitialOpenings } from "./firebase_import_helper.js";
 
     const log = document.getElementById("log");
     const button = document.getElementById("startBtn");
@@ -66,10 +66,10 @@
         write("Вхожу анонимно…");
         await signInAnonymously(auth);
 
-        write(`Данные в файле: openings=${window.INITIAL_OPENINGS?.length || 0}, ratings=${window.INITIAL_RATINGS?.length || 0}`);
-        const result = await importInitialOpeningsAndRatings(db, write);
+        write(`Данные в файле: openings=${window.INITIAL_OPENINGS?.length || 0}, ratings=0`);
+        const result = await importInitialOpenings(db, write);
 
-        write(`\nГОТОВО: ${result.openings} опенингов, ${result.ratings} оценок.`);
+        write(`\nГОТОВО: ${result.openings} опенингов. Оценки не импортировались.`);
         write("Теперь открой index.html и проверь сайт.");
       } catch (error) {
         write("\nОШИБКА: " + error.message);
