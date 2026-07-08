@@ -5,10 +5,10 @@
 // Это НЕ пароль. Но правила Firestore всё равно надо настроить через firestore.rules.
 
 window.FIREBASE_CONFIG = {
-  apiKey: "ВСТАВЬ_API_KEY",
-  authDomain: "ВСТАВЬ_PROJECT_ID.firebaseapp.com",
-  projectId: "ВСТАВЬ_PROJECT_ID",
-  storageBucket: "ВСТАВЬ_PROJECT_ID.firebasestorage.app",
-  messagingSenderId: "ВСТАВЬ_MESSAGING_SENDER_ID",
-  appId: "ВСТАВЬ_APP_ID"
+  apiKey: "AIzaSyDKCKHgXURAPsz1SsXkaTLfuqdZipJD0ug",
+  authDomain: "op-ed-orden.firebaseapp.com",
+  projectId: "op-ed-orden",
+  storageBucket: "op-ed-orden.firebasestorage.app",
+  messagingSenderId: "666992131033",
+  appId: "1:666992131033:web:8d0529d1754f3f6c8c37c8"
 };
