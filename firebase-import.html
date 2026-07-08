@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Импорт OP/ED в Firebase</title>
+  <style>
+    body { margin:0; min-height:100vh; background:#0b0a10; color:#f5f3fa; font-family:system-ui,-apple-system,Segoe UI,sans-serif; display:flex; align-items:center; justify-content:center; padding:24px; }
+    .box { max-width:760px; width:100%; background:#16121f; border:1px solid #2a2435; border-radius:18px; padding:22px; box-shadow:0 20px 60px rgba(0,0,0,.4); }
+    h1 { margin:0 0 10px; }
+    p, li { color:#b9b2c8; line-height:1.55; }
+    code { background:#0f0c16; border:1px solid #2a2435; border-radius:6px; padding:2px 6px; color:#08d9d6; }
+    button { border:0; border-radius:12px; padding:12px 16px; font-weight:800; cursor:pointer; background:#ff2e63; color:#14070d; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    pre { white-space:pre-wrap; background:#0f0c16; border:1px solid #2a2435; border-radius:12px; padding:14px; color:#d8d3e5; min-height:120px; max-height:340px; overflow:auto; }
+    .warn { color:#fecdd3; }
+    a { color:#08d9d6; }
+  </style>
+</head>
+<body>
+  <main class="box">
+    <h1>Импорт OP/ED в Firebase</h1>
+    <p>Эта страница один раз заливает стартовые данные из <code>op_ed_initial_data.js</code> в Firestore.</p>
+    <ul>
+      <li>Опенинги создаются в коллекции <code>openings</code>.</li>
+      <li>Оценки создаются в коллекции <code>ratings</code>.</li>
+      <li>Повторный импорт не создаёт дубли стартовых опенингов, потому что id берётся из <code>tempId</code>.</li>
+    </ul>
+    <p class="warn">Перед нажатием проверь: Firebase config заполнен, Firestore создан, Anonymous Auth включён, Rules опубликованы.</p>
+    <button id="startBtn" type="button">Начать импорт</button>
+    <p><a href="./index.html">Вернуться на сайт</a></p>
+    <pre id="log">Жду запуска…</pre>
+  </main>
+
+  <script src="./firebase-config.js"></script>
+  <script src="./op_ed_initial_data.js"></script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js";
+    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js";
+    import { getFirestore } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js";
+    import { importInitialOpeningsAndRatings } from "./firebase_import_helper.js";
+
+    const log = document.getElementById("log");
+    const button = document.getElementById("startBtn");
+
+    function write(message) {
+      log.textContent += "\n" + message;
+      log.scrollTop = log.scrollHeight;
+    }
+
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      log.textContent = "Запускаю…";
+
+      try {
+        const config = window.FIREBASE_CONFIG || {};
+        if (!config.projectId || String(config.projectId).includes("ВСТАВЬ")) {
+          throw new Error("firebase-config.js не заполнен");
+        }
+
+        write("Инициализирую Firebase…");
+        const app = initializeApp(config);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        write("Вхожу анонимно…");
+        await signInAnonymously(auth);
+
+        write(`Данные в файле: openings=${window.INITIAL_OPENINGS?.length || 0}, ratings=${window.INITIAL_RATINGS?.length || 0}`);
+        const result = await importInitialOpeningsAndRatings(db, write);
+
+        write(`\nГОТОВО: ${result.openings} опенингов, ${result.ratings} оценок.`);
+        write("Теперь открой index.html и проверь сайт.");
+      } catch (error) {
+        write("\nОШИБКА: " + error.message);
+        button.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

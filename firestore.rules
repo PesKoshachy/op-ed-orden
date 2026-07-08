@@ -1,0 +1,71 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function validStringOrEmpty(value, maxLen) {
+      return value is string && value.size() <= maxLen;
+    }
+
+    function validList(value, maxCount) {
+      return value is list && value.size() <= maxCount;
+    }
+
+    function validOpening(data) {
+      return data.keys().hasOnly([
+        "title", "anime", "type", "year", "season", "order",
+        "studios", "directors", "performers",
+        "image", "link", "createdBy", "createdAt", "updatedAt",
+        "importTempId", "importBatchId"
+      ])
+      && validStringOrEmpty(data.title, 220)
+      && validStringOrEmpty(data.anime, 220)
+      && data.type in ["OP", "ED"]
+      && data.year is number
+      && data.year >= 1990
+      && data.year <= 2035
+      && data.season in ["Зима", "Весна", "Лето", "Осень", ""]
+      && data.order is number
+      && validList(data.studios, 20)
+      && validList(data.directors, 20)
+      && validList(data.performers, 20)
+      && validStringOrEmpty(data.image, 1000)
+      && validStringOrEmpty(data.link, 1000)
+      && validStringOrEmpty(data.createdBy, 80);
+    }
+
+    function validRating(data) {
+      return data.keys().hasOnly([
+        "openingId", "nickname", "score", "updatedAt"
+      ])
+      && validStringOrEmpty(data.openingId, 120)
+      && validStringOrEmpty(data.nickname, 80)
+      && data.score is number
+      && data.score >= 0
+      && data.score <= 10;
+    }
+
+    match /openings/{openingId} {
+      allow read: if true;
+      allow create: if signedIn() && validOpening(request.resource.data);
+      allow update: if signedIn() && validOpening(request.resource.data);
+      allow delete: if false;
+    }
+
+    match /ratings/{ratingId} {
+      allow read: if true;
+      allow create, update: if signedIn() && validRating(request.resource.data);
+      allow delete: if false;
+    }
+
+    match /meta/{metaId} {
+      allow read: if true;
+      allow create, update: if signedIn();
+      allow delete: if false;
+    }
+  }
+}
